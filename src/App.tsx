@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Sparkles, 
@@ -31,6 +31,16 @@ interface ScriptWithImages extends Script {
   panels: PanelWithImage[];
 }
 
+const API_KEY_STORAGE_KEY = 'instartoon_gemini_api_key';
+const API_KEY_REMEMBER_KEY = 'instartoon_remember_api_key';
+
+const toErrorMessage = (error: unknown) => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return '생성 중 오류가 발생했습니다. 다시 시도해주세요.';
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'character' | 'script'>('character');
   const [charInput, setCharInput] = useState('');
@@ -40,18 +50,41 @@ export default function App() {
   const [script, setScript] = useState<ScriptWithImages | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [panelCount, setPanelCount] = useState(4);
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY) || '');
+  const [rememberApiKey, setRememberApiKey] = useState(() => {
+    const saved = localStorage.getItem(API_KEY_REMEMBER_KEY);
+    if (saved !== null) return saved === 'true';
+    return Boolean(localStorage.getItem(API_KEY_STORAGE_KEY));
+  });
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const envApiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || '';
+  const hasApiKey = Boolean(apiKey.trim() || envApiKey.trim());
+
+  useEffect(() => {
+    localStorage.setItem(API_KEY_REMEMBER_KEY, rememberApiKey ? 'true' : 'false');
+    if (rememberApiKey && apiKey.trim()) {
+      localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+      return;
+    }
+    if (!rememberApiKey) {
+      localStorage.removeItem(API_KEY_STORAGE_KEY);
+    }
+  }, [apiKey, rememberApiKey]);
 
   const handleGenerateCharacter = async () => {
-    if (!charInput.trim()) return;
+    if (!charInput.trim() || !hasApiKey) return;
+    setErrorMessage('');
     setIsGenerating(true);
     try {
-      const char = await generateCharacter(charInput);
+      const char = await generateCharacter(charInput, apiKey);
       setCharacter(char);
       setIsImageLoading(true);
-      const imageUrl = await generateCharacterImage(char.visualPrompt);
+      const imageUrl = await generateCharacterImage(char.visualPrompt, apiKey);
       setCharacter(prev => prev ? { ...prev, imageUrl } : null);
     } catch (error) {
       console.error(error);
+      setErrorMessage(toErrorMessage(error));
     } finally {
       setIsGenerating(false);
       setIsImageLoading(false);
@@ -59,13 +92,15 @@ export default function App() {
   };
 
   const handleGenerateScript = async () => {
-    if (!character || !scriptInput.trim()) return;
+    if (!character || !scriptInput.trim() || !hasApiKey) return;
+    setErrorMessage('');
     setIsGenerating(true);
     try {
-      const s = await generateScript(character, scriptInput, panelCount);
+      const s = await generateScript(character, scriptInput, panelCount, apiKey);
       setScript(s as ScriptWithImages);
     } catch (error) {
       console.error(error);
+      setErrorMessage(toErrorMessage(error));
     } finally {
       setIsGenerating(false);
     }
@@ -114,7 +149,7 @@ export default function App() {
   };
 
   const handleGeneratePanelBackground = async (panelIndex: number) => {
-    if (!script) return;
+    if (!script || !hasApiKey) return;
     
     const newPanels = [...script.panels];
     const visualDesc = newPanels[panelIndex].visualDescription;
@@ -126,12 +161,14 @@ export default function App() {
 
     newPanels[panelIndex].isBgLoading = true;
     setScript({ ...script, panels: newPanels });
+    setErrorMessage('');
 
     try {
-      const bgUrl = await generateBackgroundImage(visualDesc, character?.imageUrl);
+      const bgUrl = await generateBackgroundImage(visualDesc, character?.imageUrl, apiKey);
       newPanels[panelIndex].backgroundUrl = bgUrl;
     } catch (error) {
       console.error(error);
+      setErrorMessage(toErrorMessage(error));
     } finally {
       newPanels[panelIndex].isBgLoading = false;
       setScript({ ...script, panels: newPanels });
@@ -172,6 +209,38 @@ export default function App() {
         <div className="space-y-8">
           <section>
             <h2 className="text-xl font-display font-bold mb-4 flex items-center gap-2">
+              Gemini API 키
+            </h2>
+            <div className="brutalist-card p-6 space-y-4">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Gemini API 키를 입력하세요"
+                className="w-full p-4 border-2 border-black focus:outline-none focus:ring-2 focus:ring-yellow-300 font-sans"
+              />
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={rememberApiKey}
+                  onChange={(e) => setRememberApiKey(e.target.checked)}
+                  className="w-4 h-4 accent-black"
+                />
+                기억하기
+              </label>
+              <p className="text-xs text-zinc-500">
+                {envApiKey ? '배포 환경변수 키가 설정되어 있습니다. 입력값이 있으면 입력값을 우선 사용합니다.' : '입력한 키는 이 브라우저에서만 저장됩니다.'}
+              </p>
+              {!hasApiKey && (
+                <p className="text-xs text-red-600 font-semibold">
+                  캐릭터/대본/배경 생성을 사용하려면 API 키가 필요합니다.
+                </p>
+              )}
+            </div>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-display font-bold mb-4 flex items-center gap-2">
               {activeTab === 'character' ? <User className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
               {activeTab === 'character' ? '어떤 캐릭터를 만들까요?' : '어떤 이야기를 만들까요?'}
             </h2>
@@ -190,7 +259,7 @@ export default function App() {
                   />
                   <button 
                     onClick={handleGenerateCharacter}
-                    disabled={isGenerating || !charInput.trim()}
+                    disabled={isGenerating || !charInput.trim() || !hasApiKey}
                     className="brutalist-button w-full flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
@@ -241,7 +310,7 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-4">
                     <button 
                       onClick={handleGenerateScript}
-                      disabled={isGenerating || !scriptInput.trim()}
+                      disabled={isGenerating || !scriptInput.trim() || !hasApiKey}
                       className="brutalist-button flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
@@ -385,7 +454,7 @@ export default function App() {
                               </div>
                               <button 
                                 onClick={() => handleGeneratePanelBackground(idx)}
-                                disabled={panel.isBgLoading}
+                                disabled={panel.isBgLoading || !hasApiKey}
                                 className="text-[10px] font-bold flex items-center gap-1 hover:underline disabled:opacity-50"
                               >
                                 {panel.isBgLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <ImageIcon className="w-3 h-3" />}
@@ -452,6 +521,9 @@ export default function App() {
                 )}
               </AnimatePresence>
             </div>
+            {errorMessage && (
+              <p className="mt-4 text-sm text-red-600 font-medium">{errorMessage}</p>
+            )}
           </section>
         </div>
       </main>

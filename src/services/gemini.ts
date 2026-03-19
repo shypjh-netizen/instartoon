@@ -1,6 +1,18 @@
-import { GoogleGenAI, GenerateContentResponse, Type } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const getEffectiveApiKey = (apiKey?: string) => {
+  const inputKey = apiKey?.trim();
+  const envKey = (import.meta as any).env?.VITE_GEMINI_API_KEY?.trim?.() || "";
+  return inputKey || envKey;
+};
+
+const getAiClient = (apiKey?: string) => {
+  const effectiveApiKey = getEffectiveApiKey(apiKey);
+  if (!effectiveApiKey) {
+    throw new Error("Gemini API 키가 필요합니다. 상단 입력칸에서 키를 입력해주세요.");
+  }
+  return new GoogleGenAI({ apiKey: effectiveApiKey });
+};
 
 export interface Character {
   name: string;
@@ -20,7 +32,8 @@ export interface Script {
   }[];
 }
 
-export const generateCharacter = async (prompt: string): Promise<Character> => {
+export const generateCharacter = async (prompt: string, apiKey?: string): Promise<Character> => {
+  const ai = getAiClient(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `인스타툰 캐릭터를 만들어줘. 사용자의 요청: ${prompt}. 
@@ -43,7 +56,8 @@ export const generateCharacter = async (prompt: string): Promise<Character> => {
   return JSON.parse(response.text);
 };
 
-export const generateCharacterImage = async (visualPrompt: string): Promise<string> => {
+export const generateCharacterImage = async (visualPrompt: string, apiKey?: string): Promise<string> => {
+  const ai = getAiClient(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-image",
     contents: {
@@ -63,7 +77,8 @@ export const generateCharacterImage = async (visualPrompt: string): Promise<stri
   throw new Error("Image generation failed");
 };
 
-export const generateBackgroundImage = async (description: string, characterImageUrl?: string): Promise<string> => {
+export const generateBackgroundImage = async (description: string, characterImageUrl?: string, apiKey?: string): Promise<string> => {
+  const ai = getAiClient(apiKey);
   const parts: any[] = [
     {
       text: `Ultra-minimalist, primitive doodle style. Very simple outlines, basic shapes, consistent with a quick pen sketch style. No shading, no complex textures, very few lines. 
@@ -95,7 +110,8 @@ export const generateBackgroundImage = async (description: string, characterImag
   throw new Error("Background generation failed");
 };
 
-export const generateScript = async (character: Character, theme: string, panelCount: number = 4): Promise<Script> => {
+export const generateScript = async (character: Character, theme: string, panelCount: number = 4, apiKey?: string): Promise<Script> => {
+  const ai = getAiClient(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `캐릭터 '${character.name}'(${character.description})를 주인공으로 하는 ${panelCount}컷 인스타툰 대본을 작성해줘. 
