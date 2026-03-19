@@ -34,6 +34,8 @@ interface ScriptWithImages extends Script {
 const API_KEY_STORAGE_KEY = 'instartoon_gemini_api_key';
 const API_KEY_REMEMBER_KEY = 'instartoon_remember_api_key';
 
+const normalizeApiKeyInput = (value: string) => value.trim().replace(/^['\"]+|['\"]+$/g, '').replace(/\s+/g, '');
+
 const toErrorMessage = (error: unknown) => {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -50,7 +52,7 @@ export default function App() {
   const [script, setScript] = useState<ScriptWithImages | null>(null);
   const [isImageLoading, setIsImageLoading] = useState(false);
   const [panelCount, setPanelCount] = useState(4);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY) || '');
+  const [apiKey, setApiKey] = useState(() => normalizeApiKeyInput(localStorage.getItem(API_KEY_STORAGE_KEY) || ''));
   const [rememberApiKey, setRememberApiKey] = useState(() => {
     const saved = localStorage.getItem(API_KEY_REMEMBER_KEY);
     if (saved !== null) return saved === 'true';
@@ -64,7 +66,7 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem(API_KEY_REMEMBER_KEY, rememberApiKey ? 'true' : 'false');
     if (rememberApiKey && apiKey.trim()) {
-      localStorage.setItem(API_KEY_STORAGE_KEY, apiKey.trim());
+      localStorage.setItem(API_KEY_STORAGE_KEY, normalizeApiKeyInput(apiKey));
       return;
     }
     if (!rememberApiKey) {
@@ -215,7 +217,7 @@ export default function App() {
               <input
                 type="password"
                 value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
+                onChange={(e) => setApiKey(normalizeApiKeyInput(e.target.value))}
                 placeholder="Gemini API 키를 입력하세요"
                 className="w-full p-4 border-2 border-black focus:outline-none focus:ring-2 focus:ring-yellow-300 font-sans"
               />
@@ -230,6 +232,9 @@ export default function App() {
               </label>
               <p className="text-xs text-zinc-500">
                 {envApiKey ? '배포 환경변수 키가 설정되어 있습니다. 입력값이 있으면 입력값을 우선 사용합니다.' : '입력한 키는 이 브라우저에서만 저장됩니다.'}
+              </p>
+              <p className="text-xs text-zinc-500">
+                키를 붙여넣을 때 따옴표, 공백, 줄바꿈은 자동으로 제거됩니다.
               </p>
               {!hasApiKey && (
                 <p className="text-xs text-red-600 font-semibold">
