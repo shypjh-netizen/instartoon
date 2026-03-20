@@ -3,14 +3,23 @@ import { ApiError, GoogleGenAI, Type } from "@google/genai";
 const TEXT_MODEL = "gemini-2.5-flash";
 const IMAGE_MODEL = "imagen-4.0-generate-001";
 
-const normalizeApiKey = (value?: string) => {
+const extractApiKeyCandidate = (value?: string) => {
   if (!value) return "";
-  return value.trim().replace(/^['\"]+|['\"]+$/g, "").replace(/\s+/g, "");
+  const trimmed = value.trim();
+  const assignmentMatch = trimmed.match(/^(?:export\s+)?(?:GEMINI_API_KEY|GOOGLE_API_KEY|VITE_GEMINI_API_KEY)\s*=\s*(.+)$/i);
+  return assignmentMatch ? assignmentMatch[1] : trimmed;
+};
+
+const normalizeApiKey = (value?: string) => {
+  return extractApiKeyCandidate(value).trim().replace(/^['\"]+|['\"]+$/g, "").replace(/\s+/g, "");
 };
 
 const toApiErrorMessage = (error: unknown) => {
   if (error instanceof ApiError) {
     if (error.status === 400) {
+      if (error.message.includes("API key not valid")) {
+        return "입력한 값이 유효한 Gemini API 키가 아닙니다. Google AI Studio에서 발급한 키 전체를 붙여넣었는지 확인해주세요.";
+      }
       return `Gemini 요청이 거부되었습니다. API 키 형식 또는 요청 파라미터를 확인해주세요. (${error.message})`;
     }
     if (error.status === 403) {
